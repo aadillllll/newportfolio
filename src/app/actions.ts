@@ -1,10 +1,11 @@
 'use server'
 
-import fs from 'fs'
-import path from 'path'
+import { put, del } from '@vercel/blob'
+import { kv } from '@vercel/kv'
+import { revalidatePath } from 'next/cache'
 
-const portfolioFile = path.join(process.cwd(), 'data', 'portfolio.json')
-const messagesFile = path.join(process.cwd(), 'data', 'messages.json')
+// We use KV to store lists of objects.
+// Keys: 'portfolio_items' and 'contact_messages'
 
 export async function submitContact(formData: FormData) {
   const name = formData.get('name')
@@ -15,17 +16,23 @@ export async function submitContact(formData: FormData) {
     return { error: 'All fields are required' }
   }
 
-  const existing = JSON.parse(fs.readFileSync(messagesFile, 'utf-8'))
-  existing.push({
+  const newMessage = {
     id: Date.now().toString(),
     date: new Date().toISOString(),
     name,
     email,
     message
-  })
-  
-  fs.writeFileSync(messagesFile, JSON.stringify(existing, null, 2))
-  return { success: true }
+  };
+
+  try {
+    let existing: any[] = await kv.get('contact_messages') || [];
+    existing.unshift(newMessage);
+    await kv.set('contact_messages', existing);
+    return { success: true }
+  } catch (err) {
+    console.error("KV Error:", err);
+    return { error: 'Database connection failed' }
+  }
 }
 
 export async function uploadPortfolio(formData: FormData) {
@@ -39,67 +46,82 @@ export async function uploadPortfolio(formData: FormData) {
     return { error: 'All fields are required' }
   }
 
-  const arrayBuffer = await file.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-  
-  // Save file to public/uploads directory
-  const filename = `${Date.now()}-${file.name}`
-  const filepath = path.join(process.cwd(), 'public', 'uploads', filename)
-  fs.writeFileSync(filepath, buffer)
+  try {
+    // 1. Upload to Vercel Blob
+    const filename = `${Date.now()}-${file.name}`
+    const blob = await put(filename, file, { access: 'public' })
 
-  // Update DB
-  const existing = JSON.parse(fs.readFileSync(portfolioFile, 'utf-8'))
-  const newItem = {
-    id: Date.now().toString(),
-    title,
-    category,
-    categoryLabel,
-    imageUrl: `/uploads/${filename}`,
-    linkUrl: linkUrl || "#"
+    // 2. Update DB in KV
+    const newItem = {
+      id: Date.now().toString(),
+      title,
+      category,
+      categoryLabel,
+      imageUrl: blob.url,
+      linkUrl: linkUrl || "#"
+    }
+
+    let existing: any[] = await kv.get('portfolio_items') || [];
+    existing.unshift(newItem); // put newest first
+    await kv.set('portfolio_items', existing);
+    
+    revalidatePath('/')
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (err) {
+    console.error("Blob/KV Error:", err);
+    return { error: 'Failed to upload or save item' }
   }
-  existing.push(newItem)
-  
-  fs.writeFileSync(portfolioFile, JSON.stringify(existing, null, 2))
-  return { success: true }
 }
 
 export async function getPortfolioItems() {
-  const data = JSON.parse(fs.readFileSync(portfolioFile, 'utf-8'))
-  return data
+  try {
+    const data: any[] | null = await kv.get('portfolio_items');
+    return data || [];
+  } catch (e) {
+    console.error("KV Fetch Error:", e);
+    return [];
+  }
 }
 
 export async function getMessages() {
-  const data = JSON.parse(fs.readFileSync(messagesFile, 'utf-8'))
-  return data
+  try {
+    const data: any[] | null = await kv.get('contact_messages');
+    return data || [];
+  } catch (e) {
+    console.error("KV Fetch Error:", e);
+    return [];
+  }
 }
 
-import { revalidatePath } from 'next/cache'
-
 export async function deletePortfolioItem(id: string) {
-  if (!fs.existsSync(portfolioFile)) return;
-  let existing = JSON.parse(fs.readFileSync(portfolioFile, 'utf-8'))
-  
-  const item = existing.find((i: any) => i.id === id)
-  if (item && item.imageUrl && item.imageUrl !== '#') {
-    const photoPath = path.join(process.cwd(), 'public', item.imageUrl)
-    if (fs.existsSync(photoPath)) {
-      try { fs.unlinkSync(photoPath) } catch (e) {}
+  try {
+    let existing: any[] = await kv.get('portfolio_items') || [];
+    const item = existing.find(i => i.id === id);
+    
+    // Delete file from blob if it exists
+    if (item && item.imageUrl && item.imageUrl.includes('public.blob.vercel-storage.com')) {
+      await del(item.imageUrl);
     }
-  }
 
-  existing = existing.filter((item: any) => item.id !== id)
-  fs.writeFileSync(portfolioFile, JSON.stringify(existing, null, 2))
-  
-  revalidatePath('/')
-  revalidatePath('/admin')
+    existing = existing.filter(i => i.id !== id);
+    await kv.set('portfolio_items', existing);
+    
+    revalidatePath('/')
+    revalidatePath('/admin')
+  } catch (e) {
+    console.error("Delete Error:", e);
+  }
 }
 
 export async function deleteMessage(id: string) {
-  if (!fs.existsSync(messagesFile)) return;
-  let existing = JSON.parse(fs.readFileSync(messagesFile, 'utf-8'))
-  
-  existing = existing.filter((item: any) => item.id !== id)
-  fs.writeFileSync(messagesFile, JSON.stringify(existing, null, 2))
-  
-  revalidatePath('/admin')
+  try {
+    let existing: any[] = await kv.get('contact_messages') || [];
+    existing = existing.filter(i => i.id !== id);
+    await kv.set('contact_messages', existing);
+    
+    revalidatePath('/admin')
+  } catch (e) {
+    console.error("Delete Error:", e);
+  }
 }

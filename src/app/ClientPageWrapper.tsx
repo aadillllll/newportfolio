@@ -225,7 +225,7 @@ export default function ClientPageWrapper({ portfolioItems }: { portfolioItems: 
             {filteredItems.map((item, i) => (
               <motion.div key={item.id} layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
                 <TiltCard className={`portfolio-item ${item.category}`}>
-                  <a href={item.linkUrl !== "#" && item.linkUrl ? item.linkUrl : "#"} target={item.linkUrl !== "#" ? "_blank" : "_self"} rel="noopener noreferrer" style={{textDecoration: 'none', color: 'inherit'}}>
+                  <a href={item.linkUrl !== "#" && item.linkUrl ? item.linkUrl : item.imageUrl} target="_blank" rel="noopener noreferrer" style={{textDecoration: 'none', color: 'inherit'}}>
                     <div className="portfolio-img">
                       <img src={item.imageUrl} alt={item.title} />
                       <div className="portfolio-overlay">
@@ -337,7 +337,7 @@ export default function ClientPageWrapper({ portfolioItems }: { portfolioItems: 
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; 2026 Adil Muhammed N. All rights reserved. | <a href="/admin" style={{ color: '#00e5ff', textDecoration: 'none' }}>Admin Studio (Upload Works)</a></p>
+          <p>&copy; 2026 Adil Muhammed N. All rights reserved. | <a href="/admin" style={{ color: '#00e5ff', textDecoration: 'none', transition: 'opacity 0.3s' }}>Admin Studio <i className="fas fa-lock" style={{fontSize: '0.8rem'}}></i></a></p>
         </div>
       </footer>
     </>
