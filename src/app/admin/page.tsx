@@ -59,7 +59,11 @@ export default async function AdminPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
               {items.map((item: any) => (
                 <div key={item.id} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#0a0a0a', border: '1px solid #333' }}>
-                  <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '150px', objectFit: 'cover' }} />
+                  {item.imageUrl && item.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
+                    <video src={item.imageUrl} style={{ width: '100%', height: '150px', objectFit: 'cover' }} autoPlay muted loop playsInline />
+                  ) : (
+                    <img src={item.imageUrl} alt={item.title} style={{ width: '100%', height: '150px', objectFit: 'cover' }} />
+                  )}
                   <div style={{ padding: '1rem' }}>
                     <h4 style={{ fontSize: '0.9rem', color: '#fff', marginBottom: '0.3rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
                     <span style={{ fontSize: '0.75rem', color: '#00e5ff' }}>{item.categoryLabel}</span>

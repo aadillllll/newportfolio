@@ -227,7 +227,11 @@ export default function ClientPageWrapper({ portfolioItems }: { portfolioItems: 
                 <TiltCard className={`portfolio-item ${item.category}`}>
                   <a href={item.linkUrl !== "#" && item.linkUrl ? item.linkUrl : item.imageUrl} target="_blank" rel="noopener noreferrer" style={{textDecoration: 'none', color: 'inherit'}}>
                     <div className="portfolio-img">
-                      <img src={item.imageUrl} alt={item.title} />
+                      {item.imageUrl && item.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
+                        <video src={item.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay muted loop playsInline />
+                      ) : (
+                        <img src={item.imageUrl} alt={item.title} />
+                      )}
                       <div className="portfolio-overlay">
                         <i className={item.category === 'youtube' || item.category === 'reels' ? "fas fa-play-circle" : "fas fa-search-plus"}></i>
                       </div>
