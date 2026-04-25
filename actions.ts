@@ -102,7 +102,7 @@ export async function getMessages() {
 
 export async function deletePortfolioItem(id: string) {
   try {
-    let existing: any[] = await kv.get('portfolio_items') || [];
+    let existing: any[] = await db.get('portfolio_items') || [];
     const item = existing.find(i => i.id === id);
     
     // Delete file from blob if it exists
@@ -111,7 +111,7 @@ export async function deletePortfolioItem(id: string) {
     }
 
     existing = existing.filter(i => i.id !== id);
-    await kv.set('portfolio_items', existing);
+    await db.set('portfolio_items', existing);
     
     revalidatePath('/')
     revalidatePath('/admin')
@@ -122,9 +122,9 @@ export async function deletePortfolioItem(id: string) {
 
 export async function deleteMessage(id: string) {
   try {
-    let existing: any[] = await kv.get('contact_messages') || [];
+    let existing: any[] = await db.get('contact_messages') || [];
     existing = existing.filter(i => i.id !== id);
-    await kv.set('contact_messages', existing);
+    await db.set('contact_messages', existing);
     
     revalidatePath('/admin')
   } catch (e) {
