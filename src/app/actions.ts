@@ -1,8 +1,14 @@
 'use server'
 
 import { put, del } from '@vercel/blob'
-import { kv } from '@vercel/kv'
+import { createClient } from '@vercel/kv'
 import { revalidatePath } from 'next/cache'
+
+// Vercel recently migrated KV to Upstash, so we check for both sets of variables
+const db = createClient({
+  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '',
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '',
+});
 
 // We use KV to store lists of objects.
 // Keys: 'portfolio_items' and 'contact_messages'
@@ -25,9 +31,9 @@ export async function submitContact(formData: FormData) {
   };
 
   try {
-    let existing: any[] = await kv.get('contact_messages') || [];
+    let existing: any[] = await db.get('contact_messages') || [];
     existing.unshift(newMessage);
-    await kv.set('contact_messages', existing);
+    await db.set('contact_messages', existing);
     return { success: true }
   } catch (err) {
     console.error("KV Error:", err);
@@ -36,20 +42,30 @@ export async function submitContact(formData: FormData) {
 }
 
 export async function uploadPortfolio(formData: FormData) {
-  const file = formData.get('media') as File
   const title = formData.get('title') as string
   const category = formData.get('category') as string
   const categoryLabel = formData.get('categoryLabel') as string
   const linkUrl = formData.get('linkUrl') as string
+  const imageUrl = formData.get('imageUrl') as string;
 
-  if (!file || !title || !category || !categoryLabel) {
+  if (!title || !category || !categoryLabel) {
     return { error: 'All fields are required' }
   }
 
   try {
-    // 1. Upload to Vercel Blob
-    const filename = `${Date.now()}-${file.name}`
-    const blob = await put(filename, file, { access: 'public' })
+    let finalImageUrl = imageUrl;
+    
+    // Fallback if someone still sends a small file directly through server action
+    const file = formData.get('media') as File | null;
+    if (file && file.size > 0 && !imageUrl) {
+        const filename = `${Date.now()}-${file.name}`
+        const blob = await put(filename, file, { access: 'public' })
+        finalImageUrl = blob.url;
+    }
+
+    if (!finalImageUrl) {
+        return { error: 'Media URL is required' }
+    }
 
     // 2. Update DB in KV
     const newItem = {
@@ -57,13 +73,13 @@ export async function uploadPortfolio(formData: FormData) {
       title,
       category,
       categoryLabel,
-      imageUrl: blob.url,
+      imageUrl: finalImageUrl,
       linkUrl: linkUrl || "#"
     }
 
-    let existing: any[] = await kv.get('portfolio_items') || [];
+    let existing: any[] = await db.get('portfolio_items') || [];
     existing.unshift(newItem); // put newest first
-    await kv.set('portfolio_items', existing);
+    await db.set('portfolio_items', existing);
     
     revalidatePath('/')
     revalidatePath('/admin')
@@ -76,7 +92,7 @@ export async function uploadPortfolio(formData: FormData) {
 
 export async function getPortfolioItems() {
   try {
-    const data: any[] | null = await kv.get('portfolio_items');
+    const data: any[] | null = await db.get('portfolio_items');
     return data || [];
   } catch (e) {
     console.error("KV Fetch Error:", e);
@@ -86,7 +102,7 @@ export async function getPortfolioItems() {
 
 export async function getMessages() {
   try {
-    const data: any[] | null = await kv.get('contact_messages');
+    const data: any[] | null = await db.get('contact_messages');
     return data || [];
   } catch (e) {
     console.error("KV Fetch Error:", e);
@@ -96,7 +112,7 @@ export async function getMessages() {
 
 export async function deletePortfolioItem(id: string) {
   try {
-    let existing: any[] = await kv.get('portfolio_items') || [];
+    let existing: any[] = await db.get('portfolio_items') || [];
     const item = existing.find(i => i.id === id);
     
     // Delete file from blob if it exists
@@ -105,7 +121,7 @@ export async function deletePortfolioItem(id: string) {
     }
 
     existing = existing.filter(i => i.id !== id);
-    await kv.set('portfolio_items', existing);
+    await db.set('portfolio_items', existing);
     
     revalidatePath('/')
     revalidatePath('/admin')
@@ -116,9 +132,9 @@ export async function deletePortfolioItem(id: string) {
 
 export async function deleteMessage(id: string) {
   try {
-    let existing: any[] = await kv.get('contact_messages') || [];
+    let existing: any[] = await db.get('contact_messages') || [];
     existing = existing.filter(i => i.id !== id);
-    await kv.set('contact_messages', existing);
+    await db.set('contact_messages', existing);
     
     revalidatePath('/admin')
   } catch (e) {

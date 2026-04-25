@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { uploadPortfolio } from '../actions'
+import { upload } from '@vercel/blob/client'
 
 export default function AdminClient() {
   const [status, setStatus] = useState<string | null>(null)
@@ -12,26 +13,45 @@ export default function AdminClient() {
     if (!formRef.current) return
     setStatus('Uploading...')
 
-    const formData = new FormData(formRef.current)
-    const category = formData.get('category') as string
-    
-    // Automatically set human readable label
-    const labelMap: Record<string, string> = {
-      'youtube': 'YouTube Videos',
-      'thumbnails': 'Thumbnail Design',
-      'posters': 'Poster Design',
-      'reels': 'Reels / Shorts'
-    }
-    formData.append('categoryLabel', labelMap[category] || 'Portfolio Item')
+    try {
+      const formData = new FormData(formRef.current)
+      
+      const file = formData.get('media') as File
+      if (file && file.size > 0) {
+        setStatus('Uploading media directly to storage (This may take a minute for large videos)...')
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+        });
+        
+        formData.append('imageUrl', blob.url);
+        formData.delete('media'); // Remove the actual file from FormData to prevent 413 Payload Too Large error on server action
+      }
 
-    const res = await uploadPortfolio(formData)
-    if (res.success) {
-      setStatus('Success! Item added to portfolio.')
-      formRef.current.reset()
-      // Reload to show new items (simple approach)
-      setTimeout(() => window.location.reload(), 1500)
-    } else {
-      setStatus(`Error: ${res.error}`)
+      const category = formData.get('category') as string
+      
+      // Automatically set human readable label
+      const labelMap: Record<string, string> = {
+        'youtube': 'YouTube Videos',
+        'thumbnails': 'Thumbnail Design',
+        'posters': 'Poster Design',
+        'reels': 'Reels / Shorts'
+      }
+      formData.append('categoryLabel', labelMap[category] || 'Portfolio Item')
+
+      setStatus('Saving to database...')
+      const res = await uploadPortfolio(formData)
+      if (res.success) {
+        setStatus('Success! Item added to portfolio.')
+        formRef.current.reset()
+        // Reload to show new items (simple approach)
+        setTimeout(() => window.location.reload(), 1500)
+      } else {
+        setStatus(`Error: ${res.error}`)
+      }
+    } catch (err: any) {
+      console.error("Upload Error:", err);
+      setStatus(`Error: ${err.message || 'Upload failed'}`)
     }
   }
 
@@ -67,7 +87,7 @@ export default function AdminClient() {
         <input 
           type="file" 
           name="media" 
-          accept="image/*" 
+          accept="image/*,video/*" 
           required
           style={{ color: '#ccc' }}
         />
